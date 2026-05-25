@@ -18,7 +18,7 @@ Una herramienta web ágil y segura diseñada para administradores de red y espec
 ## 🌐 Acceso a la Herramienta
 
 La herramienta está alojada de forma segura y siempre disponible en el siguiente enlace:
-[🔗 Abrir Generador de Usuarios](https://quantiOCS.github.io/usersfw/)
+https://quantiocs.github.io/usersfw/
 
 ---
 *Mantenido por quantiOCS*
