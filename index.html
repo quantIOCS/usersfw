@@ -169,6 +169,12 @@
         }
 
         try {
+            // Obtenemos y limpiamos el nombre del grupo para usarlo en el archivo
+            const rawGroupName = document.getElementById('groupName').value.trim();
+            // Reemplazamos caracteres especiales por guiones bajos para evitar errores en Windows/Mac
+            const safeGroupName = rawGroupName ? rawGroupName.replace(/[^a-zA-Z0-9_-]/g, '_') : 'generados';
+            const baseFilename = `usuarios-${safeGroupName}`;
+
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Credenciales');
 
@@ -183,7 +189,7 @@
 
             const excelBuffer = await workbook.xlsx.writeBuffer();
             const excelBlob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-            const excelFilename = `Credenciales_FW_${new Date().toLocaleDateString().replace(/\//g, '-')}.xlsx`;
+            const excelFilename = `${baseFilename}.xlsx`;
 
             const blobWriter = new zip.BlobWriter("application/zip");
             const zipWriter = new zip.ZipWriter(blobWriter, { password: masterPassword });
@@ -191,7 +197,7 @@
             await zipWriter.add(excelFilename, new zip.BlobReader(excelBlob));
             const zipBlob = await zipWriter.close();
 
-            saveAs(zipBlob, "Credenciales_Protegidas.zip");
+            saveAs(zipBlob, `${baseFilename}.zip`);
 
             alert("✅ ¡Archivo descargado con éxito! Tu Excel está seguro dentro del ZIP.");
         } catch (error) {
@@ -209,7 +215,6 @@
     function copyUsers() {
         if (finalData.length === 0) return;
         
-        // Formato tabulado (Usuario \t Contraseña) ideal para pegar en Excel o TXT
         let textToCopy = "Usuario\tContraseña\n";
         finalData.forEach(d => {
             textToCopy += `${d.usuario}\t${d.password}\n`;
