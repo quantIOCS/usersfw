@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Cuentas Firewall</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://unpkg.com/@zip.js/zip.js/dist/zip.min.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: #1a237e; color: white; padding: 25px; text-align: center; }
+        .main-content { padding: 30px; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #333; }
+        input[type="text"], textarea { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; }
+        input[type="text"]:focus, textarea:focus { border-color: #1a237e; outline: none; }
+        
+        .checkbox-group { display: flex; align-items: center; gap: 10px; margin-top: -10px; margin-bottom: 25px; }
+        .checkbox-group input[type="checkbox"] { width: auto; transform: scale(1.3); cursor: pointer; }
+        .checkbox-group label { margin-bottom: 0; font-weight: 500; color: #424242; cursor: pointer; }
+        .checkbox-group code { background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #c62828;}
+
+        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+        .btn { flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; color: white; }
+        .btn-primary { background: #1a237e; }
+        .btn-success { background: #2e7d32; }
+        .btn-secondary { background: #757575; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        
+        .results { display: none; margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; }
+        pre { background: #263238; color: #ffccbc; padding: 15px; border-radius: 6px; font-size: 13px; overflow-x: auto; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; font-size: 14px; }
+        th { background: #e8eaf6; color: #1a237e; }
+        .badge { background: #ff5252; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; float: right; }
+        .info-box { background: #e8f5e9; border-left: 4px solid #2e7d32; padding: 10px; margin-top: 10px; font-size: 13px; color: #1b5e20; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>🔐 Generador de Cuentas Firewall</h1>
+        <p>Usuarios únicos • Passwords Seguros • ZIP Encriptado</p>
+    </div>
+
+    <div class="main-content">
+        <div class="input-group">
+            <label>Nombre del Grupo en el FW:</label>
+            <input type="text" id="groupName" placeholder="Ej. VPN_SOPORTE_TECNICO">
+        </div>
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="groupExists">
+            <label for="groupExists">Este grupo ya existe (usar <code>append</code> para no sobreescribir usuarios actuales)</label>
+        </div>
+
+        <div class="input-group">
+            <label>Lista de Usuarios (Limpia duplicados automáticamente):</label>
+            <textarea id="usersList" rows="6" placeholder="admin.pedro&#10;user.maria&#10;admin.pedro (este se borrará por repetido)"></textarea>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="processAll()">⚡ Procesar Usuarios</button>
+            <button class="btn btn-secondary" onclick="location.reload()">🗑️ Reiniciar Todo</button>
+        </div>
+
+        <div class="results" id="resultsArea">
+            <div class="btn-group">
+                <button class="btn btn-success" onclick="exportToEncryptedZip()">📦 Descargar ZIP Protegido</button>
+                <button class="btn btn-primary" onclick="copyCLI()">📋 Copiar Script CLI</button>
+            </div>
+            
+            <div class="info-box">
+                <strong>🛡️ Nivel Máximo de Seguridad:</strong> Al hacer clic en descargar, se comprimirá tu Excel y te pedirá una <strong>contraseña maestra</strong> que cifrará el ZIP completo. ¡No la olvides!
+            </div>
+
+            <h3 style="margin-top:20px;">1. Vista previa de credenciales:</h3>
+            <div id="tableContainer"></div>
+
+            <h3 style="margin-top:20px;">2. Script CLI para el Firewall:</h3>
+            <pre id="cliCode"></pre>
+        </div>
+    </div>
+</div>
+
+<script>
+    let finalData = [];
+
+    // Generador criptográfico de contraseñas de alta seguridad
+    function generateSecurePass() {
+        const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
+        let retVal = "";
+        const randomValues = new Uint32Array(18);
+        window.crypto.getRandomValues(randomValues);
+        
+        for (let i = 0; i < 18; ++i) {
+            retVal += charset[randomValues[i] % charset.length];
+        }
+        return retVal;
+    }
+
+    function processAll() {
+        const group = document.getElementById('groupName').value.trim();
+        const rawUsers = document.getElementById('usersList').value.split('\n');
+        const isExistingGroup = document.getElementById('groupExists').checked;
+
+        if (!group || rawUsers[0] === "") {
+            alert("Por favor completa el nombre del grupo y la lista de usuarios.");
+            return;
+        }
+
+        // Limpiar duplicados y vacíos
+        const uniqueUsers = [...new Set(rawUsers.map(u => u.trim()).filter(u => u !== ""))];
+        const repeatedCount = rawUsers.filter(u => u.trim() !== "").length - uniqueUsers.length;
+
+        finalData = uniqueUsers.map(user => ({
+            usuario: user,
+            password: generateSecurePass()
+        }));
+
+        displayResults(group, repeatedCount, isExistingGroup);
+    }
+
+    function displayResults(group, duplicates, isExistingGroup) {
+        document.getElementById('resultsArea').style.display = 'block';
+        
+        let html = `<table><tr><th>Usuario</th><th>Password (18 chars)</th></tr>`;
+        finalData.forEach(d => {
+            html += `<tr><td>${d.usuario}</td><td><code>${d.password}</code></td></tr>`;
+        });
+        html += `</table>`;
+        if(duplicates > 0) html += `<p class="badge">⚠️ Se eliminaron ${duplicates} usuarios duplicados</p>`;
+        document.getElementById('tableContainer').innerHTML = html;
+
+        let cli = `config user local\n`;
+        finalData.forEach(d => {
+            cli += `  edit "${d.usuario}"\n    set type password\n    set passwd "${d.password}"\n  next\n`;
+        });
+        
+        const memberAction = isExistingGroup ? "append member" : "set member";
+        cli += `end\n\nconfig user group\n  edit "${group}"\n    ${memberAction} ${finalData.map(d => `"${d.usuario}"`).join(' ')}\n  next\nend`;
+        
+        document.getElementById('cliCode').textContent = cli;
+    }
+
+    async function exportToEncryptedZip() {
+        // Pedir contraseña al usuario para el archivo ZIP
+        const masterPassword = prompt("🔐 Crea tu Contraseña Maestra para encriptar este ZIP:\n\n*Asegúrate de recordarla para poder abrir el Excel.");
+        
+        if (!masterPassword) {
+            alert("❌ Descarga cancelada. Es obligatorio ingresar una contraseña para proteger el ZIP.");
+            return;
+        }
+
+        try {
+            // 1. Generar el Excel en memoria
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Credenciales');
+
+            worksheet.columns = [
+                { header: 'USUARIO', key: 'usuario', width: 25 },
+                { header: 'CONTRASEÑA', key: 'password', width: 30 }
+            ];
+
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = { type: 'pattern', pattern:'solid', fgColor:{argb:'FFE8EAF6'}};
+            finalData.forEach(d => worksheet.addRow(d));
+
+            const excelBuffer = await workbook.xlsx.writeBuffer();
+            const excelBlob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+            const excelFilename = `Credenciales_FW_${new Date().toLocaleDateString().replace(/\//g, '-')}.xlsx`;
+
+            // 2. Comprimir en ZIP protegido mediante zip.js
+            const blobWriter = new zip.BlobWriter("application/zip");
+            const zipWriter = new zip.ZipWriter(blobWriter, { password: masterPassword });
+            
+            await zipWriter.add(excelFilename, new zip.BlobReader(excelBlob));
+            const zipBlob = await zipWriter.close();
+
+            // 3. Descargar el archivo .zip al equipo local
+            saveAs(zipBlob, "Credenciales_Protegidas.zip");
+
+            alert("✅ ¡Archivo descargado con éxito! Tu Excel está seguro dentro del ZIP.");
+        } catch (error) {
+            console.error("Error generando el archivo:", error);
+            alert("Ocurrió un error al intentar crear el ZIP. Revisa la consola para más detalles.");
+        }
+    }
+
+    function copyCLI() {
+        const text = document.getElementById('cliCode').textContent;
+        navigator.clipboard.writeText(text);
+        alert("✅ Script CLI copiado al portapapeles.");
+    }
+</script>
+
+</body>
+</html>
